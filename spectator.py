@@ -168,14 +168,19 @@ class SpectatorApp:
         self.legal_destinations = {}
         self.state_history = []
         self.consecutive_leerzuege = 0
-        self.last_hen_src: Optional[int] = None
-        self.last_hen_dst: Optional[int] = None
-        self.hen_board_history: List[frozenset] = []
+        self.leerzug_half_moves = 0
+        self.track_min: Optional[int] = None
+        self.track_max: Optional[int] = None
+        self.board_history: List[Tuple[frozenset, frozenset, str]] = []
         self.leerzug_warning = ""
         self.game_over = False
         self.winner = 0
         self.termination_reason = ""
         self.critic_eval = 0.0
+
+    def check_threefold_repetition(self) -> bool:
+        current_state = (frozenset(self.foxes), frozenset(self.hens), self.current_agent)
+        return self.board_history.count(current_state) >= 3
 
     def filter_hen_legal_actions(self, actions: List[int]) -> List[int]:
         if self.current_agent != "hens":
@@ -190,16 +195,19 @@ class SpectatorApp:
             if dest == -1:
                 continue
 
-            # 1. Traditional 3-Leerzüge rule: "an der gleichen Position maximal 3 Leerzüge hin und her fahren"
-            if self.consecutive_leerzuege >= 3 and orig == self.last_hen_dst and dest == self.last_hen_src:
-                continue
-
-            # 2. Multi-hen repetition protection: prevent 3rd occurrence of identical hen formation
-            next_hens = (self.hens - {orig}) | {dest}
-            if self.hen_board_history.count(frozenset(next_hens)) >= 2:
-                continue
+            # 3-Leerzüge rule: after 3 moves on the same track, moving along that track is prohibited!
+            if self.leerzug_half_moves >= 3 and self.track_min is not None:
+                cur_min = min(orig, dest)
+                cur_max = max(orig, dest)
+                if cur_min == self.track_min and cur_max == self.track_max:
+                    continue
 
             filtered.append(act)
+
+        # Fallback if filter leaves no moves
+        if not filtered and actions:
+            return actions
+
         return filtered
 
     def record_hen_move(self, src: int, dst: int) -> None:
@@ -207,32 +215,45 @@ class SpectatorApp:
         r_dst, _ = NODE_COORDS[dst]
 
         if r_dst < r_src:
-            # Forward move made: irreversible progress towards stall!
+            # Genuine forward advancement towards stall: reset counter & repetition history!
             self.consecutive_leerzuege = 0
-            self.last_hen_src = None
-            self.last_hen_dst = None
-            self.hen_board_history.clear()
+            self.leerzug_half_moves = 0
+            self.track_min = None
+            self.track_max = None
+            self.board_history.clear()
             self.leerzug_warning = ""
         else:
-            # Horizontal / sideways move (Leerzug)
-            if src == self.last_hen_dst and dst == self.last_hen_src:
-                self.consecutive_leerzuege += 1
-            else:
-                self.consecutive_leerzuege = 1
-            self.last_hen_src = src
-            self.last_hen_dst = dst
+            # Lateral / non-advancing move (Leerzug)
+            cur_min = min(src, dst)
+            cur_max = max(src, dst)
 
-            if self.consecutive_leerzuege >= 3:
-                self.leerzug_warning = "3 Leerzüge erreicht! Vorwärtszug Pflicht."
-            elif self.consecutive_leerzuege == 2:
-                self.leerzug_warning = "Leerzug 2/3 an gleicher Position"
+            if cur_min == self.track_min and cur_max == self.track_max:
+                self.leerzug_half_moves += 1
+            else:
+                self.track_min = cur_min
+                self.track_max = cur_max
+                self.leerzug_half_moves = 1
+
+            self.consecutive_leerzuege = min(3, self.leerzug_half_moves)
+
+            if self.leerzug_half_moves >= 3:
+                self.leerzug_warning = "3 Leerzüge erreicht! Anderer Zug ist Pflicht."
+            elif self.leerzug_half_moves == 2:
+                self.leerzug_warning = "Leerzug 2/3"
             else:
                 self.leerzug_warning = "Leerzug 1/3"
 
-        self.hen_board_history.append(frozenset(self.hens))
+        self.board_history.append((frozenset(self.foxes), frozenset(self.hens), self.current_agent))
 
     def step_ai(self) -> None:
         if self.game_over:
+            return
+
+        if self.check_threefold_repetition():
+            self.game_over = True
+            self.winner = 0
+            self.termination_reason = "threefold_repetition"
+            self.active_jumping_fox = None
             return
 
         is_fox = self.current_agent == "foxes"
@@ -266,12 +287,7 @@ class SpectatorApp:
             raw_legal = np.where(mask_np == 1.0)[0].tolist()
             filtered_legal = self.filter_hen_legal_actions(raw_legal)
             if not filtered_legal:
-                # Hens have 0 legal non-violating moves -> Trapped!
-                self.game_over = True
-                self.winner = -1
-                self.termination_reason = "hens_trapped"
-                self.active_jumping_fox = None
-                return
+                filtered_legal = raw_legal
             mask_np = np.zeros(NUM_ACTIONS, dtype=np.float32)
             mask_np[filtered_legal] = 1.0
 
@@ -309,12 +325,15 @@ class SpectatorApp:
                 dest = STEP_TARGET[orig, direction]
                 if dest != -1:
                     self.record_hen_move(orig, dest)
-        elif was_fox_capture:
-            self.consecutive_leerzuege = 0
-            self.last_hen_src = None
-            self.last_hen_dst = None
-            self.hen_board_history.clear()
-            self.leerzug_warning = ""
+        else:
+            if was_fox_capture:
+                self.consecutive_leerzuege = 0
+                self.leerzug_half_moves = 0
+                self.track_min = None
+                self.track_max = None
+                self.board_history.clear()
+                self.leerzug_warning = ""
+            self.board_history.append((frozenset(self.foxes), frozenset(self.hens), self.current_agent))
 
         # Check multi-jump continuation for foxes
         has_continuation = False
@@ -399,9 +418,10 @@ class SpectatorApp:
                 land_pos = JUMP_LAND[orig, step_dir]
                 self.foxes, self.hens, _, _ = apply_action(self.foxes, self.hens, action, "foxes")
                 self.consecutive_leerzuege = 0
+                self.leerzug_half_moves = 0
                 self.last_hen_src = None
                 self.last_hen_dst = None
-                self.hen_board_history.clear()
+                self.board_history.clear()
                 self.leerzug_warning = ""
 
                 is_done, winner, reason = check_game_over(self.foxes, self.hens, self.turn_count, self.max_turns)
@@ -446,12 +466,15 @@ class SpectatorApp:
 
             if was_hen:
                 self.record_hen_move(orig, clicked_node)
-            elif was_fox_capture:
-                self.consecutive_leerzuege = 0
-                self.last_hen_src = None
-                self.last_hen_dst = None
-                self.hen_board_history.clear()
-                self.leerzug_warning = ""
+            else:
+                if was_fox_capture:
+                    self.consecutive_leerzuege = 0
+                    self.leerzug_half_moves = 0
+                    self.track_min = None
+                    self.track_max = None
+                    self.board_history.clear()
+                    self.leerzug_warning = ""
+                self.board_history.append((frozenset(self.foxes), frozenset(self.hens), self.current_agent))
 
             is_done, winner, reason = check_game_over(self.foxes, self.hens, self.turn_count, self.max_turns)
             if is_done:

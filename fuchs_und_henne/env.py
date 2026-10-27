@@ -142,9 +142,10 @@ class FuchsUndHenneEnv(AECEnv):
         self.active_jumping_fox = None
 
         self.consecutive_leerzuege = 0
-        self.last_hen_src = None
-        self.last_hen_dst = None
-        self.hen_board_history = []
+        self.leerzug_half_moves = 0
+        self.track_min = None
+        self.track_max = None
+        self.board_history = []
 
         self._agent_selector = agent_selector(self.possible_agents)
         self.agent_selection = self._agent_selector.reset()
@@ -166,14 +167,17 @@ class FuchsUndHenneEnv(AECEnv):
             dest = STEP_TARGET[orig, d]
             if dest == -1:
                 continue
-            # 3-Leerzüge rule: after 3 consecutive back-and-forth moves between same nodes, return is illegal
-            if self.consecutive_leerzuege >= 3 and orig == self.last_hen_dst and dest == self.last_hen_src:
-                continue
-            # 3-fold formation repetition
-            next_hens = (self.hens - {orig}) | {dest}
-            if self.hen_board_history.count(frozenset(next_hens)) >= 2:
-                continue
+            # 3-Leerzüge rule: after 3 moves on the same track, moving along that track is prohibited!
+            if self.leerzug_half_moves >= 3 and self.track_min is not None:
+                cur_min = min(orig, dest)
+                cur_max = max(orig, dest)
+                if cur_min == self.track_min and cur_max == self.track_max:
+                    continue
             filtered_legal.append(act)
+
+        if not filtered_legal and raw_legal:
+            return raw_legal
+
         return filtered_legal
 
     def _get_current_mask(self) -> np.ndarray:
@@ -254,27 +258,35 @@ class FuchsUndHenneEnv(AECEnv):
                 r_dst, _ = NODE_COORDS[dest]
 
                 if r_dst < r_src:
-                    # Forward move: irreversible progress towards stall!
+                    # Forward advancement towards stall: genuine progress!
                     self.consecutive_leerzuege = 0
-                    self.last_hen_src = None
-                    self.last_hen_dst = None
-                    self.hen_board_history.clear()
+                    self.leerzug_half_moves = 0
+                    self.track_min = None
+                    self.track_max = None
+                    self.board_history.clear()
                 else:
-                    # Lateral / sideways move (Leerzug)
-                    if orig == self.last_hen_dst and dest == self.last_hen_src:
-                        self.consecutive_leerzuege += 1
+                    # Lateral / non-advancing move (Leerzug)
+                    cur_min = min(orig, dest)
+                    cur_max = max(orig, dest)
+                    if cur_min == self.track_min and cur_max == self.track_max:
+                        self.leerzug_half_moves += 1
                     else:
-                        self.consecutive_leerzuege = 1
-                    self.last_hen_src = orig
-                    self.last_hen_dst = dest
+                        self.track_min = cur_min
+                        self.track_max = cur_max
+                        self.leerzug_half_moves = 1
 
-                self.hen_board_history.append(frozenset(self.hens))
+                    self.consecutive_leerzuege = min(3, self.leerzug_half_moves)
 
-        elif was_fox_capture:
-            self.consecutive_leerzuege = 0
-            self.last_hen_src = None
-            self.last_hen_dst = None
-            self.hen_board_history.clear()
+                self.board_history.append((frozenset(self.foxes), frozenset(self.hens), self.agent_selection))
+
+        else:
+            if was_fox_capture:
+                self.consecutive_leerzuege = 0
+                self.leerzug_half_moves = 0
+                self.track_min = None
+                self.track_max = None
+                self.board_history.clear()
+            self.board_history.append((frozenset(self.foxes), frozenset(self.hens), self.agent_selection))
 
         # Check multi-jump continuation for foxes
         has_continuation = False
@@ -342,14 +354,19 @@ class FuchsUndHenneEnv(AECEnv):
         )
 
         if not is_done and not has_continuation:
-            # If next turn will be hens, check if hens have any legal moves under Leerzug & repetition rules
-            next_agent = "hens" if current_agent == "foxes" else "foxes"
-            if next_agent == "hens":
-                hen_legal = self.get_hen_legal_actions()
-                if len(hen_legal) == 0:
-                    is_done = True
-                    winner = -1
-                    reason = "hens_trapped"
+            # Check Threefold Repetition
+            if self.board_history.count((frozenset(self.foxes), frozenset(self.hens), self.agent_selection)) >= 3:
+                is_done = True
+                winner = 0
+                reason = "threefold_repetition"
+            else:
+                next_agent = "hens" if current_agent == "foxes" else "foxes"
+                if next_agent == "hens":
+                    raw_hen_legal = get_legal_actions(self.foxes, self.hens, "hens")
+                    if len(raw_hen_legal) == 0:
+                        is_done = True
+                        winner = -1
+                        reason = "hens_trapped"
 
         if is_done:
             if winner == 1:

@@ -117,10 +117,11 @@ void GameEngine::resetGame() {
     m_board.reset();
     m_selectedNode = -1;
     m_legalDestinations.clear();
-    m_lastHenSrc = -1;
-    m_lastHenDst = -1;
+    m_trackMin = -1;
+    m_trackMax = -1;
+    m_leerzugHalfMoves = 0;
     m_consecutiveLeerzuege = 0;
-    m_henBoardHistory.clear();
+    m_boardHistory.clear();
     m_leerzugWarning.clear();
     m_gameOver = false;
     m_winner = 0;
@@ -131,6 +132,23 @@ void GameEngine::resetGame() {
     emit gameOverChanged();
     emit leerzugChanged();
     updateAiTimer();
+}
+
+bool GameEngine::isHenAdvancement(int src, int dst) {
+    int r_src = fuchs::NODE_COORDS[src].r;
+    int r_dst = fuchs::NODE_COORDS[dst].r;
+    return r_dst < r_src;
+}
+
+bool GameEngine::checkThreefoldRepetition() const {
+    auto current_state = std::make_tuple(m_board.foxes, m_board.hens, m_board.fox_turn);
+    int count = 0;
+    for (const auto& s : m_boardHistory) {
+        if (s == current_state) {
+            count++;
+        }
+    }
+    return count >= 3;
 }
 
 std::vector<int> GameEngine::filterHenLegalActions(const std::vector<int>& actions, const fuchs::BitBoard& board) const {
@@ -145,58 +163,64 @@ std::vector<int> GameEngine::filterHenLegalActions(const std::vector<int>& actio
         int dest = steps[orig][dir];
         if (dest == -1) continue;
 
-        // 1. Traditional 3-Leerzüge rule: "an der gleichen Position maximal 3 Leerzüge hin und her fahren"
-        // After 3 consecutive back-and-forth moves between m_lastHenSrc and m_lastHenDst, reversing back is illegal!
-        if (m_consecutiveLeerzuege >= 3 && orig == m_lastHenDst && dest == m_lastHenSrc) {
-            continue; // Prohibited by 3-Leerzüge limit!
-        }
-
-        // 2. Multi-hen repetition protection: prevent 3rd occurrence of identical hen formation
-        uint64_t next_hens = (board.hens & ~(1ULL << orig)) | (1ULL << dest);
-        int repeats = 0;
-        for (uint64_t h_state : m_henBoardHistory) {
-            if (h_state == next_hens) repeats++;
-        }
-        if (repeats >= 2) {
-            continue; // Prohibited: would create a 3rd identical hen formation!
+        // Traditional 3-Leerzüge rule: "Die Henne darf maximal 3 Leerzüge machen (an der gleichen Position hin und her fahren)"
+        // After 3 moves along the same track, any move along that track is prohibited!
+        if (m_leerzugHalfMoves >= 3 && m_trackMin != -1) {
+            int curMin = std::min(orig, dest);
+            int curMax = std::max(orig, dest);
+            if (curMin == m_trackMin && curMax == m_trackMax) {
+                continue; // Prohibited: must execute a different move!
+            }
         }
 
         filtered.push_back(act);
+    }
+
+    // Safety fallback: If 3-Leerzug filter would remove all moves, allow raw actions
+    // (Threefold full-board repetition handles true stagnation without false forfeits)
+    if (filtered.empty() && !actions.empty()) {
+        return actions;
     }
 
     return filtered;
 }
 
 void GameEngine::recordHenMove(int src, int dst) {
-    int r_src = fuchs::NODE_COORDS[src].r;
-    int r_dst = fuchs::NODE_COORDS[dst].r;
-
-    if (r_dst < r_src) {
-        // Forward move: irreversible progress towards stall!
+    if (isHenAdvancement(src, dst)) {
+        // Genuine forward advancement towards the stall: reset Leerzug counter and history!
         m_consecutiveLeerzuege = 0;
-        m_lastHenSrc = -1;
-        m_lastHenDst = -1;
-        m_henBoardHistory.clear();
+        m_leerzugHalfMoves = 0;
+        m_trackMin = -1;
+        m_trackMax = -1;
+        m_boardHistory.clear();
         m_leerzugWarning.clear();
     } else {
-        // Horizontal / sideways move (Leerzug)
-        if (src == m_lastHenDst && dst == m_lastHenSrc) {
-            m_consecutiveLeerzuege++;
-        } else {
-            m_consecutiveLeerzuege = 1;
-        }
-        m_lastHenSrc = src;
-        m_lastHenDst = dst;
+        // Lateral / non-advancing move (Leerzug)
+        int curMin = std::min(src, dst);
+        int curMax = std::max(src, dst);
 
-        if (m_consecutiveLeerzuege >= 3) {
-            m_leerzugWarning = QStringLiteral("3 Leerzüge an gleicher Position erreicht! Vorwärtszug oder andere Henne erforderlich.");
-        } else if (m_consecutiveLeerzuege == 2) {
-            m_leerzugWarning = QStringLiteral("Leerzug 2/3 an gleicher Position");
+        if (curMin == m_trackMin && curMax == m_trackMax) {
+            m_leerzugHalfMoves++;
+        } else {
+            // Started shuttling on a new track
+            m_trackMin = curMin;
+            m_trackMax = curMax;
+            m_leerzugHalfMoves = 1;
+        }
+
+        m_consecutiveLeerzuege = std::min(3, m_leerzugHalfMoves);
+
+        if (m_leerzugHalfMoves >= 3) {
+            m_leerzugWarning = QStringLiteral("3 Leerzüge erreicht! Anderer Zug ist Pflicht.");
+        } else if (m_leerzugHalfMoves == 2) {
+            m_leerzugWarning = QStringLiteral("Leerzug 2/3");
         } else {
             m_leerzugWarning = QStringLiteral("Leerzug 1/3");
         }
     }
-    m_henBoardHistory.push_back(m_board.hens);
+
+    // Record snapshot of full board (foxes, hens, turn)
+    m_boardHistory.push_back({m_board.foxes, m_board.hens, m_board.fox_turn});
     emit leerzugChanged();
 }
 
@@ -307,17 +331,32 @@ void GameEngine::nodeClicked(int nodeIndex) {
 
         if (wasHen) {
             recordHenMove(orig, nodeIndex);
-        } else if (wasFoxCapture) {
-            m_consecutiveLeerzuege = 0;
-            m_lastHenSrc = -1;
-            m_lastHenDst = -1;
-            m_henBoardHistory.clear();
-            m_leerzugWarning.clear();
-            emit leerzugChanged();
+        } else {
+            if (wasFoxCapture) {
+                m_consecutiveLeerzuege = 0;
+                m_leerzugHalfMoves = 0;
+                m_trackMin = -1;
+                m_trackMax = -1;
+                m_boardHistory.clear();
+                m_leerzugWarning.clear();
+                emit leerzugChanged();
+            }
+            m_boardHistory.push_back({m_board.foxes, m_board.hens, m_board.fox_turn});
         }
 
         m_selectedNode = -1;
         m_legalDestinations.clear();
+
+        // Check threefold full-board repetition
+        if (checkThreefoldRepetition()) {
+            m_gameOver = true;
+            m_winner = 0; // DRAW!
+            m_terminationReason = QStringLiteral("threefold_repetition");
+            emit gameOverChanged();
+            emit stateChanged();
+            updateAiTimer();
+            return;
+        }
 
         // Check terminal state
         auto [done, win, reason] = fuchs::check_game_over(m_board, m_maxTurns);
@@ -403,15 +442,19 @@ void GameEngine::nodeClicked(int nodeIndex) {
 void GameEngine::stepAi() {
     if (m_gameOver) return;
 
-    auto raw_actions = fuchs::get_legal_actions(m_board);
-    std::vector<int> legal_actions;
-    if (!m_board.fox_turn) {
-        legal_actions = filterHenLegalActions(raw_actions, m_board);
-    } else {
-        legal_actions = raw_actions;
+    // 1. Check Threefold Repetition first
+    if (checkThreefoldRepetition()) {
+        m_gameOver = true;
+        m_winner = 0; // DRAW!
+        m_terminationReason = QStringLiteral("threefold_repetition");
+        emit gameOverChanged();
+        emit stateChanged();
+        updateAiTimer();
+        return;
     }
 
-    if (legal_actions.empty()) {
+    auto raw_actions = fuchs::get_legal_actions(m_board);
+    if (raw_actions.empty()) {
         auto [done, win, reason] = fuchs::check_game_over(m_board, m_maxTurns);
         m_gameOver = true;
         m_winner = win != 0 ? win : (m_board.fox_turn ? 1 : -1);
@@ -420,6 +463,17 @@ void GameEngine::stepAi() {
         emit stateChanged();
         updateAiTimer();
         return;
+    }
+
+    std::vector<int> legal_actions;
+    if (!m_board.fox_turn) {
+        legal_actions = filterHenLegalActions(raw_actions, m_board);
+    } else {
+        legal_actions = raw_actions;
+    }
+
+    if (legal_actions.empty()) {
+        legal_actions = raw_actions;
     }
 
     float temperature = m_stochastic ? 0.7f : 0.0f;
@@ -465,13 +519,28 @@ void GameEngine::stepAi() {
 
     if (wasHen && dest_node != -1) {
         recordHenMove(orig, dest_node);
-    } else if (wasFoxCapture) {
-        m_consecutiveLeerzuege = 0;
-        m_lastHenSrc = -1;
-        m_lastHenDst = -1;
-        m_henBoardHistory.clear();
-        m_leerzugWarning.clear();
-        emit leerzugChanged();
+    } else {
+        if (wasFoxCapture) {
+            m_consecutiveLeerzuege = 0;
+            m_leerzugHalfMoves = 0;
+            m_trackMin = -1;
+            m_trackMax = -1;
+            m_boardHistory.clear();
+            m_leerzugWarning.clear();
+            emit leerzugChanged();
+        }
+        m_boardHistory.push_back({m_board.foxes, m_board.hens, m_board.fox_turn});
+    }
+
+    // Check threefold repetition after move
+    if (checkThreefoldRepetition()) {
+        m_gameOver = true;
+        m_winner = 0; // DRAW!
+        m_terminationReason = QStringLiteral("threefold_repetition");
+        emit gameOverChanged();
+        emit stateChanged();
+        updateAiTimer();
+        return;
     }
 
     // Check terminal state

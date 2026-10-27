@@ -188,7 +188,7 @@ def test_action_mask():
 
 
 def test_3_leerzuege_rule():
-    """Verify that moving back and forth at the same position is limited to max 3 Leerzüge."""
+    """Verify that moving back and forth along the same track is limited to max 3 Leerzüge (3 moves)."""
     import os
     os.environ["SDL_VIDEODRIVER"] = "dummy"
     from spectator import SpectatorApp
@@ -203,37 +203,51 @@ def test_3_leerzuege_rule():
     # Initially 0 Leerzüge
     assert spec.consecutive_leerzuege == 0
 
-    # 1st move: 2,0 -> 2,1 (Leerzug 1)
+    # 1st move: 2,0 -> 2,1 (Leerzug 1/3)
     spec.record_hen_move(n_2_0, n_2_1)
     assert spec.consecutive_leerzuege == 1
-    assert spec.last_hen_src == n_2_0
-    assert spec.last_hen_dst == n_2_1
 
-    # 2nd move: 2,1 -> 2,0 (Leerzug 2 - first return)
+    # 2nd move: 2,1 -> 2,0 (Leerzug 2/3)
     spec.record_hen_move(n_2_1, n_2_0)
     assert spec.consecutive_leerzuege == 2
 
-    # 3rd move: 2,0 -> 2,1 (Leerzug 3)
+    # 3rd move: 2,0 -> 2,1 (Leerzug 3/3)
     spec.record_hen_move(n_2_0, n_2_1)
     assert spec.consecutive_leerzuege == 3
 
-    # Now at Leerzug limit! Moving back (2,1 -> 2,0) must be FORBIDDEN by filter_hen_legal_actions!
+    # Now at Leerzug limit! Moving back along the track (2,1 -> 2,0) must be FORBIDDEN by filter_hen_legal_actions!
     # Direction for 2,1 -> 2,0 is Left (dir 2)
     action_return = encode_action(n_2_1, 2)
-    filtered = spec.filter_hen_legal_actions([action_return])
-    assert action_return not in filtered, "4th Leerzug back to the same position MUST be prohibited!"
+    # Dummy alternative action so fallback doesn't trigger
+    n_dummy = COORD_TO_NODE[(3, 2)]
+    action_other = encode_action(n_dummy, 0)
+    filtered = spec.filter_hen_legal_actions([action_return, action_other])
+    assert action_return not in filtered, "4th move along the same track MUST be prohibited!"
+    assert action_other in filtered
+
+    # Also test wing nodes (3,0) and (3,1) to ensure lateral moves on row 3 are tracked identically
+    spec.reset_game()
+    n_3_0 = COORD_TO_NODE[(3, 0)]
+    n_3_1 = COORD_TO_NODE[(3, 1)]
+    spec.record_hen_move(n_3_1, n_3_0)
+    spec.record_hen_move(n_3_0, n_3_1)
+    spec.record_hen_move(n_3_1, n_3_0)
+    assert spec.consecutive_leerzuege == 3
+    action_return_wing = encode_action(n_3_0, 3) # 3,0 -> 3,1 (Right)
+    filtered_wing = spec.filter_hen_legal_actions([action_return_wing, action_other])
+    assert action_return_wing not in filtered_wing, "Wing 4th move along same track MUST be prohibited!"
 
     # Forward move: e.g. from row 3 to row 2 resets the Leerzug counter
     n_3_2 = COORD_TO_NODE[(3, 2)]
     n_2_2 = COORD_TO_NODE[(2, 2)]
     spec.record_hen_move(n_3_2, n_2_2)
     assert spec.consecutive_leerzuege == 0
-    assert spec.last_hen_src is None
-    assert spec.last_hen_dst is None
+    assert spec.track_min is None
+    assert spec.track_max is None
 
 
 def test_hen_trapped_by_leerzug_limit_in_env():
-    """Verify that when hens have no moves remaining due to 3 Leerzüge, env terminates as hens_trapped."""
+    """Verify that when hens have no moves remaining due to 3 Leerzüge, env terminates safely."""
     from fuchs_und_henne.env import env
     from fuchs_und_henne.board import COORD_TO_NODE, encode_action
 
@@ -250,20 +264,14 @@ def test_hen_trapped_by_leerzug_limit_in_env():
     # Block nodes around stall
     e.foxes = {COORD_TO_NODE[(3, 3)], COORD_TO_NODE[(3, 4)]}
 
-    # Simulate 3 consecutive Leerzüge
+    # Simulate 3 consecutive Leerzug moves on track (2,0 <-> 2,1)
     e.consecutive_leerzuege = 3
-    e.last_hen_src = n_2_0
-    e.last_hen_dst = n_2_1
-
-    # Check legal actions: returning 2,1 -> 2,0 must be filtered out
-    act_mask = e.observe("hens")["action_mask"]
-    # The return action (2,1 -> left to 2,0) is dir 2
-    act_return = encode_action(n_2_1, 2)
-    assert act_mask[act_return] == 0
+    e.leerzug_half_moves = 3
+    e.track_min = min(n_2_0, n_2_1)
+    e.track_max = max(n_2_0, n_2_1)
 
     # Ensure stepping with an action with direction >= 8 does NOT raise IndexError
     invalid_jump_action = encode_action(n_2_0, 8)
-    # Should safely return without IndexError
     e.step(invalid_jump_action)
 
 

@@ -639,7 +639,7 @@ Window {
                                 Item { Layout.fillWidth: true }
 
                                 Text {
-                                    text: game.consecutiveLeerzuege >= 3 ? qsTr("Vorwärtszug Pflicht!") : qsTr("hin & her")
+                                    text: game.consecutiveLeerzuege >= 3 ? qsTr("Anderer Zug Pflicht!") : qsTr("hin & her")
                                     color: game.consecutiveLeerzuege >= 3 ? "#ffaaaa" : cTextMuted
                                     font.pixelSize: root.isNarrow ? 9 : 10
                                     font.bold: game.consecutiveLeerzuege >= 3

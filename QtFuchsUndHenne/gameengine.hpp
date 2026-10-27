@@ -9,6 +9,7 @@
 #include <QtQml/qqmlregistration.h>
 #include <map>
 #include <vector>
+#include <tuple>
 #include "bitboard.hpp"
 #include "inference.hpp"
 
@@ -119,6 +120,8 @@ private:
     void updateSelectionForActiveJump();
     std::vector<int> filterHenLegalActions(const std::vector<int>& actions, const fuchs::BitBoard& board) const;
     void recordHenMove(int src, int dst);
+    bool checkThreefoldRepetition() const;
+    static bool isHenAdvancement(int src, int dst);
 
     fuchs::BitBoard m_board;
     fuchs::ActorWeights m_foxWeights;
@@ -134,11 +137,12 @@ private:
     std::map<int, int> m_legalDestinations; // destination_node -> action_id
 
     // 3-Leerzüge rule tracking
-    int m_lastHenSrc{-1};
-    int m_lastHenDst{-1};
-    int m_consecutiveLeerzuege{0};
+    int m_trackMin{-1};
+    int m_trackMax{-1};
+    int m_leerzugHalfMoves{0};
+    int m_consecutiveLeerzuege{0}; // 0 to 3 consecutive moves on current track
     QString m_leerzugWarning;
-    std::vector<uint64_t> m_henBoardHistory;
+    std::vector<std::tuple<uint64_t, uint64_t, bool>> m_boardHistory; // (foxes, hens, fox_turn) for threefold repetition
 
     bool m_gameOver{false};
     int m_winner{0}; // 1 = Hens, -1 = Fox, 0 = Draw
