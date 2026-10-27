@@ -178,9 +178,10 @@ class SpectatorApp:
         self.termination_reason = ""
         self.critic_eval = 0.0
 
-    def check_threefold_repetition(self) -> bool:
-        current_state = (frozenset(self.foxes), frozenset(self.hens), self.current_agent)
-        return self.board_history.count(current_state) >= 3
+    def would_cause_repetition(self, action: int) -> bool:
+        next_foxes, next_hens, _, _ = apply_action(self.foxes, self.hens, action, "hens")
+        candidate_state = (frozenset(next_foxes), frozenset(next_hens), "foxes")
+        return self.board_history.count(candidate_state) >= 2
 
     def filter_hen_legal_actions(self, actions: List[int]) -> List[int]:
         if self.current_agent != "hens":
@@ -195,12 +196,16 @@ class SpectatorApp:
             if dest == -1:
                 continue
 
-            # 3-Leerzüge rule: after 3 moves on the same track, moving along that track is prohibited!
+            # 1. 3-Leerzüge rule: after 3 moves on the same track, moving along that track is prohibited!
             if self.leerzug_half_moves >= 3 and self.track_min is not None:
                 cur_min = min(orig, dest)
                 cur_max = max(orig, dest)
                 if cur_min == self.track_min and cur_max == self.track_max:
                     continue
+
+            # 2. Anti-repetition: Prohibit any move that would cause a 3-fold board repetition!
+            if self.would_cause_repetition(act):
+                continue
 
             filtered.append(act)
 
@@ -247,13 +252,6 @@ class SpectatorApp:
 
     def step_ai(self) -> None:
         if self.game_over:
-            return
-
-        if self.check_threefold_repetition():
-            self.game_over = True
-            self.winner = 0
-            self.termination_reason = "threefold_repetition"
-            self.active_jumping_fox = None
             return
 
         is_fox = self.current_agent == "foxes"

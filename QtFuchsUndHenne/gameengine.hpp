@@ -120,7 +120,7 @@ private:
     void updateSelectionForActiveJump();
     std::vector<int> filterHenLegalActions(const std::vector<int>& actions, const fuchs::BitBoard& board) const;
     void recordHenMove(int src, int dst);
-    bool checkThreefoldRepetition() const;
+    bool wouldCauseRepetition(int act) const;
     static bool isHenAdvancement(int src, int dst);
 
     fuchs::BitBoard m_board;
@@ -142,7 +142,7 @@ private:
     int m_leerzugHalfMoves{0};
     int m_consecutiveLeerzuege{0}; // 0 to 3 consecutive moves on current track
     QString m_leerzugWarning;
-    std::vector<std::tuple<uint64_t, uint64_t, bool>> m_boardHistory; // (foxes, hens, fox_turn) for threefold repetition
+    std::vector<std::tuple<uint64_t, uint64_t, bool>> m_boardHistory; // (foxes, hens, fox_turn) for anti-repetition tracking
 
     bool m_gameOver{false};
     int m_winner{0}; // 1 = Hens, -1 = Fox, 0 = Draw

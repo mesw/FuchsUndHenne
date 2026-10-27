@@ -140,15 +140,17 @@ bool GameEngine::isHenAdvancement(int src, int dst) {
     return r_dst < r_src;
 }
 
-bool GameEngine::checkThreefoldRepetition() const {
-    auto current_state = std::make_tuple(m_board.foxes, m_board.hens, m_board.fox_turn);
+bool GameEngine::wouldCauseRepetition(int act) const {
+    fuchs::BitBoard next_b = m_board;
+    fuchs::apply_action(next_b, act);
+    auto candidate = std::make_tuple(next_b.foxes, next_b.hens, next_b.fox_turn);
     int count = 0;
     for (const auto& s : m_boardHistory) {
-        if (s == current_state) {
+        if (s == candidate) {
             count++;
         }
     }
-    return count >= 3;
+    return count >= 2;
 }
 
 std::vector<int> GameEngine::filterHenLegalActions(const std::vector<int>& actions, const fuchs::BitBoard& board) const {
@@ -163,21 +165,26 @@ std::vector<int> GameEngine::filterHenLegalActions(const std::vector<int>& actio
         int dest = steps[orig][dir];
         if (dest == -1) continue;
 
-        // Traditional 3-Leerzüge rule: "Die Henne darf maximal 3 Leerzüge machen (an der gleichen Position hin und her fahren)"
+        // 1. Traditional 3-Leerzüge rule: "Die Henne darf maximal 3 Leerzüge machen (an der gleichen Position hin und her fahren)"
         // After 3 moves along the same track, any move along that track is prohibited!
         if (m_leerzugHalfMoves >= 3 && m_trackMin != -1) {
             int curMin = std::min(orig, dest);
             int curMax = std::max(orig, dest);
             if (curMin == m_trackMin && curMax == m_trackMax) {
-                continue; // Prohibited: must execute a different move!
+                continue; // Prohibited: hen must execute a different move!
             }
+        }
+
+        // 2. Anti-repetition: Prohibit any move that would cause a 3-fold board repetition!
+        // The Hen is forced to choose another move rather than repeating positions.
+        if (wouldCauseRepetition(act)) {
+            continue; // Prohibited: hen must execute a different move!
         }
 
         filtered.push_back(act);
     }
 
-    // Safety fallback: If 3-Leerzug filter would remove all moves, allow raw actions
-    // (Threefold full-board repetition handles true stagnation without false forfeits)
+    // Safety fallback: If filter would remove all moves, allow raw actions
     if (filtered.empty() && !actions.empty()) {
         return actions;
     }
@@ -347,17 +354,6 @@ void GameEngine::nodeClicked(int nodeIndex) {
         m_selectedNode = -1;
         m_legalDestinations.clear();
 
-        // Check threefold full-board repetition
-        if (checkThreefoldRepetition()) {
-            m_gameOver = true;
-            m_winner = 0; // DRAW!
-            m_terminationReason = QStringLiteral("threefold_repetition");
-            emit gameOverChanged();
-            emit stateChanged();
-            updateAiTimer();
-            return;
-        }
-
         // Check terminal state
         auto [done, win, reason] = fuchs::check_game_over(m_board, m_maxTurns);
         if (done) {
@@ -442,17 +438,6 @@ void GameEngine::nodeClicked(int nodeIndex) {
 void GameEngine::stepAi() {
     if (m_gameOver) return;
 
-    // 1. Check Threefold Repetition first
-    if (checkThreefoldRepetition()) {
-        m_gameOver = true;
-        m_winner = 0; // DRAW!
-        m_terminationReason = QStringLiteral("threefold_repetition");
-        emit gameOverChanged();
-        emit stateChanged();
-        updateAiTimer();
-        return;
-    }
-
     auto raw_actions = fuchs::get_legal_actions(m_board);
     if (raw_actions.empty()) {
         auto [done, win, reason] = fuchs::check_game_over(m_board, m_maxTurns);
@@ -530,17 +515,6 @@ void GameEngine::stepAi() {
             emit leerzugChanged();
         }
         m_boardHistory.push_back({m_board.foxes, m_board.hens, m_board.fox_turn});
-    }
-
-    // Check threefold repetition after move
-    if (checkThreefoldRepetition()) {
-        m_gameOver = true;
-        m_winner = 0; // DRAW!
-        m_terminationReason = QStringLiteral("threefold_repetition");
-        emit gameOverChanged();
-        emit stateChanged();
-        updateAiTimer();
-        return;
     }
 
     // Check terminal state

@@ -156,6 +156,11 @@ class FuchsUndHenneEnv(AECEnv):
         self.truncations = {a: False for a in self.agents}
         self.infos = {a: {} for a in self.agents}
 
+    def would_cause_repetition(self, action: int) -> bool:
+        next_foxes, next_hens, _, _ = apply_action(self.foxes, self.hens, action, "hens")
+        candidate_state = (frozenset(next_foxes), frozenset(next_hens), "foxes")
+        return self.board_history.count(candidate_state) >= 2
+
     def get_hen_legal_actions(self) -> List[int]:
         """Compute legal action list for hens enforcing 3-Leerzüge and repetition rules."""
         raw_legal = get_legal_actions(self.foxes, self.hens, "hens")
@@ -167,12 +172,17 @@ class FuchsUndHenneEnv(AECEnv):
             dest = STEP_TARGET[orig, d]
             if dest == -1:
                 continue
-            # 3-Leerzüge rule: after 3 moves on the same track, moving along that track is prohibited!
+            # 1. 3-Leerzüge rule: after 3 moves on the same track, moving along that track is prohibited!
             if self.leerzug_half_moves >= 3 and self.track_min is not None:
                 cur_min = min(orig, dest)
                 cur_max = max(orig, dest)
                 if cur_min == self.track_min and cur_max == self.track_max:
                     continue
+
+            # 2. Anti-repetition: Prohibit any move that would cause a 3-fold board repetition!
+            if self.would_cause_repetition(act):
+                continue
+
             filtered_legal.append(act)
 
         if not filtered_legal and raw_legal:
@@ -354,19 +364,13 @@ class FuchsUndHenneEnv(AECEnv):
         )
 
         if not is_done and not has_continuation:
-            # Check Threefold Repetition
-            if self.board_history.count((frozenset(self.foxes), frozenset(self.hens), self.agent_selection)) >= 3:
-                is_done = True
-                winner = 0
-                reason = "threefold_repetition"
-            else:
-                next_agent = "hens" if current_agent == "foxes" else "foxes"
-                if next_agent == "hens":
-                    raw_hen_legal = get_legal_actions(self.foxes, self.hens, "hens")
-                    if len(raw_hen_legal) == 0:
-                        is_done = True
-                        winner = -1
-                        reason = "hens_trapped"
+            next_agent = "hens" if current_agent == "foxes" else "foxes"
+            if next_agent == "hens":
+                raw_hen_legal = get_legal_actions(self.foxes, self.hens, "hens")
+                if len(raw_hen_legal) == 0:
+                    is_done = True
+                    winner = -1
+                    reason = "hens_trapped"
 
         if is_done:
             if winner == 1:

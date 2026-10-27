@@ -275,3 +275,36 @@ def test_hen_trapped_by_leerzug_limit_in_env():
     e.step(invalid_jump_action)
 
 
+def test_anti_repetition_forces_different_hen_move():
+    """Verify that a move causing a 3rd position repetition is prohibited, forcing the Hen to make a different move."""
+    import os
+    os.environ["SDL_VIDEODRIVER"] = "dummy"
+    from spectator import SpectatorApp
+    from fuchs_und_henne.board import apply_action
+
+    spec = SpectatorApp(max_turns=300)
+    spec.reset_game()
+
+    n_2_0 = COORD_TO_NODE[(2, 0)]
+    n_2_1 = COORD_TO_NODE[(2, 1)]
+    action_to_2_1 = encode_action(n_2_0, 3) # Right
+
+    # Compute candidate state after action_to_2_1
+    next_foxes, next_hens, _, _ = apply_action(spec.foxes, spec.hens, action_to_2_1, "hens")
+    state_after = (frozenset(next_foxes), frozenset(next_hens), "foxes")
+
+    # Manually populate history as having seen this exact state twice
+    spec.board_history.append(state_after)
+    spec.board_history.append(state_after)
+
+    # Alternative move
+    n_dummy = COORD_TO_NODE[(3, 2)]
+    action_other = encode_action(n_dummy, 0)
+
+    # filter_hen_legal_actions should filter out action_to_2_1 because it would be the 3rd repetition!
+    filtered = spec.filter_hen_legal_actions([action_to_2_1, action_other])
+    assert action_to_2_1 not in filtered, "Move causing 3rd repetition must be filtered out!"
+    assert action_other in filtered, "Hen must be forced to choose an alternative move!"
+
+
+
