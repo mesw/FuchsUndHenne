@@ -220,6 +220,7 @@ The application features a sleek dark-theme user interface built with **Qt Quick
 * **Desktop Landscape (`width >= 720`):** 2-column layout with the board centered on the left and a fixed 340px control sidebar on the right.
 * **Mobile Portrait (`width < 720`):** 1-column layout with the board proportionally scaled at the top, and cards stacked vertically below.
 * **Minimum Width 320px Support:** Engineered and verified for small mobile viewports (e.g. iPhone SE at 320×568) with touch-friendly tap targets, native-style smooth flick scrolling, and a floating scroll position indicator.
+* **AI Play Style (Varied vs. Greedy):** Supports both **Varied Play** (Softmax temperature sampling with $\tau = 0.7$ over legal moves for diverse and exciting AI vs AI games) and **Greedy Play** (pure argmax deterministic play), switchable via UI button or the `T` key.
 
 ### 7.2 Building WebAssembly Locally
 Ensure Emscripten is configured and run:

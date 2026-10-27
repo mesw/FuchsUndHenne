@@ -38,6 +38,8 @@ class GameEngine : public QObject {
     Q_PROPERTY(int activeJumpingFox READ activeJumpingFox NOTIFY stateChanged)
     Q_PROPERTY(int consecutiveLeerzuege READ consecutiveLeerzuege NOTIFY leerzugChanged)
     Q_PROPERTY(QString leerzugWarning READ leerzugWarning NOTIFY leerzugChanged)
+    Q_PROPERTY(bool stochastic READ isStochastic WRITE setStochastic NOTIFY stochasticChanged)
+    Q_PROPERTY(QString styleName READ styleName NOTIFY stochasticChanged)
 
 public:
     explicit GameEngine(QObject *parent = nullptr);
@@ -78,6 +80,11 @@ public:
     int consecutiveLeerzuege() const { return m_consecutiveLeerzuege; }
     QString leerzugWarning() const { return m_leerzugWarning; }
 
+    bool isStochastic() const { return m_stochastic; }
+    void setStochastic(bool stochastic);
+    QString styleName() const;
+    Q_INVOKABLE void toggleStochastic();
+
     // Board Geometry helpers for QML
     Q_INVOKABLE QVariantList getAllEdges() const;
     Q_INVOKABLE QVariantList getNodeCoords() const;
@@ -101,6 +108,7 @@ signals:
     void modelsLoaded();
     void maxTurnsChanged();
     void leerzugChanged();
+    void stochasticChanged();
 
 private slots:
     void onAiTimerTimeout();
@@ -117,6 +125,7 @@ private:
     fuchs::ActorWeights m_henWeights;
 
     int m_mode{0}; // 0: AI vs AI, 1: Human (Hens) vs AI, 2: Human (Fox) vs AI, 3: Human vs Human
+    bool m_stochastic{true}; // true: Softmax temperature sampling (varied games), false: pure argmax
     bool m_isPaused{false};
     int m_speedFps{3}; // Default 3 moves / second
     int m_maxTurns{300};

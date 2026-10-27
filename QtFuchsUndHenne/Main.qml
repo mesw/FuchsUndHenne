@@ -60,6 +60,8 @@ Window {
                 game.reloadModels()
             } else if (event.key === Qt.Key_S) {
                 game.stepOnce()
+            } else if (event.key === Qt.Key_T) {
+                game.toggleStochastic()
             }
         }
         Component.onCompleted: forceActiveFocus()
@@ -426,7 +428,7 @@ Window {
                 // 1. Game Mode Selector Card
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: root.isNarrow ? 64 : 74
+                    Layout.preferredHeight: root.isNarrow ? 92 : 102
                     color: cCardBg
                     radius: 10
                     border.color: "#343b4b"
@@ -435,7 +437,7 @@ Window {
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: root.cardPadding
-                        spacing: 4
+                        spacing: root.isNarrow ? 3 : 5
 
                         RowLayout {
                             Layout.fillWidth: true
@@ -478,6 +480,46 @@ Window {
                             font.bold: true
                             elide: Text.ElideRight
                             Layout.fillWidth: true
+                        }
+
+                        // AI Play Style Row (Varied / Greedy)
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 4
+
+                            Text {
+                                text: qsTr("AI Style:")
+                                color: cTextMuted
+                                font.pixelSize: root.isNarrow ? 10 : 11
+                            }
+
+                            Item { Layout.fillWidth: true }
+
+                            Rectangle {
+                                width: styleText.implicitWidth + (root.isNarrow ? 10 : 14)
+                                height: root.isNarrow ? 20 : 22
+                                radius: 4
+                                color: game.stochastic ? "#1c3829" : (styleMouse.containsMouse ? "#3b4457" : "#313848")
+                                border.color: game.stochastic ? cSelect : "#465268"
+                                border.width: 1
+
+                                Text {
+                                    id: styleText
+                                    anchors.centerIn: parent
+                                    text: game.stochastic
+                                        ? (root.isVertical ? qsTr("Varied") : qsTr("Varied (T)"))
+                                        : (root.isVertical ? qsTr("Greedy") : qsTr("Greedy (T)"))
+                                    color: game.stochastic ? cSelect : cTextMain
+                                    font.pixelSize: root.isNarrow ? 10 : 11
+                                    font.bold: true
+                                }
+                                MouseArea {
+                                    id: styleMouse
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: game.toggleStochastic()
+                                }
+                            }
                         }
                     }
                 }

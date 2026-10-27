@@ -6,6 +6,7 @@
 #include <string>
 #include <fstream>
 #include <cmath>
+#include <cstdlib>
 #include <algorithm>
 #include <iostream>
 #include "bitboard.hpp"
@@ -83,7 +84,8 @@ struct ActorWeights {
 inline int predict_best_action(
     const ActorWeights& w,
     const ObsTensor& obs,
-    const std::vector<int>& legal_actions
+    const std::vector<int>& legal_actions,
+    float temperature = 0.0f
 ) {
     if (legal_actions.empty()) return -1;
     if (legal_actions.size() == 1) return legal_actions[0];
@@ -151,22 +153,63 @@ inline int predict_best_action(
     }
 
     // Layer 4: FC2 Linear(256 -> 528) evaluated ONLY for legal actions!
-    int best_act = legal_actions[0];
-    float best_logit = -1e9f;
+    if (temperature <= 0.05f) {
+        int best_act = legal_actions[0];
+        float best_logit = -1e9f;
 
-    for (int act : legal_actions) {
+        for (int act : legal_actions) {
+            float logit = w.fc2_b[act];
+            const float* w_row = &w.fc2_w[act * 256];
+            for (int j = 0; j < 256; ++j) {
+                logit += fc1_out[j] * w_row[j];
+            }
+            if (logit > best_logit) {
+                best_logit = logit;
+                best_act = act;
+            }
+        }
+        return best_act;
+    }
+
+    // Softmax temperature sampling over legal actions
+    std::vector<float> logits(legal_actions.size());
+    float max_logit = -1e9f;
+    for (size_t i = 0; i < legal_actions.size(); ++i) {
+        int act = legal_actions[i];
         float logit = w.fc2_b[act];
         const float* w_row = &w.fc2_w[act * 256];
         for (int j = 0; j < 256; ++j) {
             logit += fc1_out[j] * w_row[j];
         }
-        if (logit > best_logit) {
-            best_logit = logit;
-            best_act = act;
+        logits[i] = logit;
+        if (logit > max_logit) {
+            max_logit = logit;
         }
     }
 
-    return best_act;
+    std::vector<float> exp_vals(legal_actions.size());
+    float sum_exp = 0.0f;
+    float inv_t = 1.0f / temperature;
+    for (size_t i = 0; i < legal_actions.size(); ++i) {
+        float val = std::exp((logits[i] - max_logit) * inv_t);
+        exp_vals[i] = val;
+        sum_exp += val;
+    }
+
+    if (sum_exp <= 0.0f || !std::isfinite(sum_exp)) {
+        return legal_actions[0];
+    }
+
+    float r = (static_cast<float>(std::rand()) / (static_cast<float>(RAND_MAX) + 1.0f)) * sum_exp;
+    float cumulative = 0.0f;
+    for (size_t i = 0; i < legal_actions.size(); ++i) {
+        cumulative += exp_vals[i];
+        if (r <= cumulative) {
+            return legal_actions[i];
+        }
+    }
+
+    return legal_actions.back();
 }
 
 } // namespace fuchs

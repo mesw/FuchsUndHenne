@@ -10,11 +10,26 @@
 GameEngine::GameEngine(QObject *parent)
     : QObject(parent)
 {
+    std::srand(static_cast<unsigned int>(QDateTime::currentMSecsSinceEpoch()));
     m_board.reset();
     loadModels();
 
     connect(&m_aiTimer, &QTimer::timeout, this, &GameEngine::onAiTimerTimeout);
     updateAiTimer();
+}
+
+QString GameEngine::styleName() const {
+    return m_stochastic ? QStringLiteral("Varied (Stochastic)") : QStringLiteral("Greedy (Deterministic)");
+}
+
+void GameEngine::setStochastic(bool stochastic) {
+    if (m_stochastic == stochastic) return;
+    m_stochastic = stochastic;
+    emit stochasticChanged();
+}
+
+void GameEngine::toggleStochastic() {
+    setStochastic(!m_stochastic);
 }
 
 QString GameEngine::modeName() const {
@@ -407,10 +422,11 @@ void GameEngine::stepAi() {
         return;
     }
 
+    float temperature = m_stochastic ? 0.7f : 0.0f;
     fuchs::ObsTensor obs = fuchs::make_observation_tensor(m_board);
     int chosen_action = -1;
     if (m_board.fox_turn) {
-        chosen_action = fuchs::predict_best_action(m_foxWeights, obs, legal_actions);
+        chosen_action = fuchs::predict_best_action(m_foxWeights, obs, legal_actions, temperature);
     } else {
         // Tactical Guard for Hens: Filter out blunder moves that leave immediate jumps for the Fox
         std::vector<int> safe_hen_actions;
@@ -432,7 +448,7 @@ void GameEngine::stepAi() {
         // If safe actions exist among non-repeating moves, use them;
         // if ALL non-repeating moves are under threat, Hen AI is FORCED to advance instead of repeating!
         const std::vector<int>& hen_actions = safe_hen_actions.empty() ? legal_actions : safe_hen_actions;
-        chosen_action = fuchs::predict_best_action(m_henWeights, obs, hen_actions);
+        chosen_action = fuchs::predict_best_action(m_henWeights, obs, hen_actions, temperature);
     }
 
     auto [orig, dir] = fuchs::decode_action(chosen_action);
