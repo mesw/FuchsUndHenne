@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="refresh" content="0; url=appQtFuchsUndHenne.html">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Fuchs und Henne - C++ Bitboard & Deep RL Spectator</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #1a1d24;
+            color: #f0f3f8;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+        .container {
+            text-align: center;
+            padding: 24px;
+            max-width: 540px;
+        }
+        h2 {
+            margin-top: 0;
+            font-size: 22px;
+            color: #f0f3f8;
+        }
+        p {
+            font-size: 14px;
+            color: #919baf;
+            line-height: 1.6;
+        }
+        a {
+            color: #50a0ff;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        .spinner {
+            width: 44px;
+            height: 44px;
+            border: 3px solid rgba(80, 160, 255, 0.2);
+            border-top-color: #50a0ff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 20px auto;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .meta-box {
+            margin-top: 24px;
+            padding: 16px;
+            background: rgba(35, 39, 49, 0.7);
+            border: 1px solid #2f3543;
+            border-radius: 12px;
+            font-size: 12px;
+            color: #919baf;
+        }
+        .meta-links {
+            margin-top: 10px;
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+        }
+        .meta-links a {
+            color: #50a0ff;
+            font-size: 12px;
+        }
+    </style>
+    <script>
+        (function() {
+            var target = "appQtFuchsUndHenne.html";
+            var path = window.location.pathname;
+            // If running locally from root with build directory present
+            if (path.indexOf("build/WebAssembly") === -1 && !path.endsWith("appQtFuchsUndHenne.html")) {
+                if (window.location.protocol === "file:") {
+                    window.location.replace("appQtFuchsUndHenne.html");
+                    return;
+                }
+            }
+            window.location.replace(target);
+        })();
+    </script>
+</head>
+<body>
+    <div class="container">
+        <div class="spinner"></div>
+        <h2>Fuchs und Henne</h2>
+        <p>Launching WebAssembly Deep RL engine & spectator... If you are not redirected automatically, <a href="appQtFuchsUndHenne.html">click here to start</a>.</p>
+        
+        <div class="meta-box">
+            <div>Licensed under the <strong>GNU General Public License v3.0 (GPLv3)</strong></div>
+            <div style="margin-top: 4px;">C++ Bitboard Engine &amp; Deep Reinforcement Learning (Actor-Critic)</div>
+            <div style="margin-top: 4px;">100% Client-Side WebAssembly: High-performance bitboard simulation with embedded neural network inference running entirely in your browser.</div>
+            <div class="meta-links">
+                <a href="https://github.com/mesw/FuchsUndHenne" target="_blank" rel="noopener">GitHub Repository (Source Code)</a>
+                <span>&bull;</span>
+                <a href="https://mesw.github.io/FuchsUndHenne" target="_blank" rel="noopener">mesw.github.io/FuchsUndHenne</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
