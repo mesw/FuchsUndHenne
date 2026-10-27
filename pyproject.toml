@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fuchs_und_henne"
+version = "0.1.0"
+description = "Fuchs und Henne - Asymmetric Deep RL & WASM Deployment"
+readme = "README.md"
+license = {text = "GPL-3.0-or-later"}
+requires-python = ">=3.10"
+dependencies = [
+    "torch",
+    "gymnasium>=0.29.0",
+    "pettingzoo>=1.24.0",
+    "numpy>=1.24.0",
+    "tensorboard",
+    "pytest",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

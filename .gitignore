@@ -1,0 +1,102 @@
+# ==============================================================================
+# Python & Virtual Environments
+# ==============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# PyCharm / VS Code / IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ==============================================================================
+# RL Training Checkpoints & TensorBoard Logs
+# ==============================================================================
+runs/
+checkpoints/
+*_prev.pt
+*.tmp
+
+# ==============================================================================
+# Qt Creator & C++ Build Artifacts
+# ==============================================================================
+.qtcreator/
+QtFuchsUndHenne/.qtcreator/
+*.user
+*.user.*
+*.autosave
+
+# Build Directories (Desktop MinGW, WebAssembly, etc.)
+build/
+build_*
+QtFuchsUndHenne/build/
+QtFuchsUndHenne/build_*
+CMakeUserPresets.json
+
+# Build intermediate files
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+build.ninja
+.ninja_deps
+.ninja_log
+.qt/
+.qtc/
+.qtc_clangd/
+.rcc/
+*_autogen/
+*.o
+*.obj
+*.aotstats
+*.ilk
+*.pdb
+*.exp
+*.lib
+
+# Temporary & backup copies
+* - Kopie.*
+* copy.*
+*-gh-pages/
+
+# ==============================================================================
+# Operating System Files
+# ==============================================================================
+.DS_Store
+Thumbs.db
+ehthumbs.db
+[Dd]esktop.ini

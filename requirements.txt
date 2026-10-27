@@ -1,0 +1,11 @@
+# Core Deep Learning
+torch
+
+# Multi-Agent Reinforcement Learning & Environments
+gymnasium>=0.29.0
+pettingzoo>=1.24.0
+numpy>=1.24.0
+
+# Telemetry & Testing
+tensorboard
+pytest
